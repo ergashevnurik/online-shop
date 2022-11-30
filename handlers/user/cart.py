@@ -11,7 +11,7 @@ from aiogram.types.chat import ChatActions
 from states import CheckoutState
 from loader import dp, db, bot
 from filters import IsUser
-from .menu import cart
+from .menu import cart, user_menu, catalog, balance, delivery_status
 
 
 @dp.message_handler(IsUser(), text=cart)
@@ -225,7 +225,11 @@ async def process_confirm(message: Message, state: FSMContext):
 async def process_confirm(message: Message, state: FSMContext):
 
     enough_money = True  # enough money on the balance sheet
-    markup = ReplyKeyboardRemove()
+
+    markup = ReplyKeyboardMarkup(selective=True)
+    markup.add(catalog)
+    markup.add(balance, cart)
+    markup.add(delivery_status)
 
     if enough_money:
 
@@ -235,14 +239,24 @@ async def process_confirm(message: Message, state: FSMContext):
 
             cid = message.chat.id
             products = [idx + '=' + str(quantity) for idx, quantity in db.fetchall('''SELECT idx, quantity FROM cart WHERE cid=?''', (cid,))]  # idx=quantity
+            products_idx = [idx for idx in db.fetchall('''SELECT idx FROM cart WHERE cid=?''', (cid,))]  # idx=quantity
+
             db.query('INSERT INTO orders VALUES (?, ?, ?, ?)', (cid, data['name'], data['address'], ' '.join(products)))
             db.query('DELETE FROM cart WHERE cid=?', (cid,))
 
-            res = 'Имя: <b>' + data['name'] + '</b>\nАдрес: <b>' + data['address'] + '</b>\n' + 'Номер: <b>' + data['phone'] + '</b>'
-            await message.answer('Ок! Ваш заказ уже в пути 🚀\n' + res, reply_markup=markup)
-            cid = message.chat.id
-            if cid not in config.ADMINS:
-                await bot.send_message(config.ADMINS[0], '🚩Поступил заказ \n' + res)
+            formatted = [''.join(i) for i in products_idx]
+
+            print(f"Formatted data line 247: {formatted}")
+
+            # result = str(' '.join(formatted))
+
+            for product_data in formatted:
+                res = 'Имя: <b>' + data['name'] + '</b>\nАдрес: <b>' + data['address'] + '</b>\n' + 'Номер: <b>' + data['phone'] + '</b>' + '\nИмя Товар: <b>' + data['products'][product_data][0] + '</b>\n' + 'Цена: <b>' + str(data['products'][product_data][1]) + '</b>\n' + 'Кол-во: <b>' + str(data['products'][product_data][2]) + '</b>\n'
+                await message.answer('Ок! Ваш заказ уже в пути 🚀\n' + res, reply_markup=markup)
+
+                cid = message.chat.id
+                if cid not in config.ADMINS:
+                    await bot.send_message(config.ADMINS[0], '🚩Поступил заказ \n' + res)
     else:
 
         await message.answer('У вас недостаточно денег на счете. Пополните баланс!', reply_markup=markup)
